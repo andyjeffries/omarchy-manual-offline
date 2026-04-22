@@ -7,12 +7,12 @@ A scheduled GitHub Actions workflow keeps the files up to date with new Omarchy 
 - **Full** (`omarchy-manual-*`) — the manual followed by every release changelog since v1.
 - **Manual only** (`omarchy-manual-only-*`) — just the manual, no changelog. Noticeably lighter (~20–25% smaller) because release screenshots aren't embedded.
 
-Grab them from the [Releases page](../../releases/latest) or directly from the stable URLs:
+Grab them from the [Releases page](https://github.com/andyjeffries/omarchy-manual-offline/releases/latest) or directly from the stable URLs:
 
-- `https://github.com/<owner>/<repo>/releases/download/latest/omarchy-manual-latest.epub`
-- `https://github.com/<owner>/<repo>/releases/download/latest/omarchy-manual-latest.pdf`
-- `https://github.com/<owner>/<repo>/releases/download/latest/omarchy-manual-only-latest.epub`
-- `https://github.com/<owner>/<repo>/releases/download/latest/omarchy-manual-only-latest.pdf`
+- [omarchy-manual-latest.epub](https://github.com/andyjeffries/omarchy-manual-offline/releases/download/latest/omarchy-manual-latest.epub) — full, epub
+- [omarchy-manual-latest.pdf](https://github.com/andyjeffries/omarchy-manual-offline/releases/download/latest/omarchy-manual-latest.pdf) — full, PDF
+- [omarchy-manual-only-latest.epub](https://github.com/andyjeffries/omarchy-manual-offline/releases/download/latest/omarchy-manual-only-latest.epub) — manual only, epub
+- [omarchy-manual-only-latest.pdf](https://github.com/andyjeffries/omarchy-manual-offline/releases/download/latest/omarchy-manual-only-latest.pdf) — manual only, PDF
 
 ## What this repo does
 
