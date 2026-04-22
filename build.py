@@ -21,7 +21,7 @@ import requests
 from bs4 import BeautifulSoup
 import markdown as md_lib
 from ebooklib import epub
-from PIL import Image, UnidentifiedImageError
+from PIL import Image, ImageDraw, ImageFont, UnidentifiedImageError
 import io
 
 MANUAL_ROOT = "https://learn.omacom.io/2/the-omarchy-manual"
@@ -280,6 +280,96 @@ def rewrite_image_urls(html: str, base_url: str, images: ImageCache, local_prefi
 
 
 # ---------------------------------------------------------------------------
+# Cover generation
+# ---------------------------------------------------------------------------
+
+FONT_CANDIDATES_BOLD = [
+    "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
+    "/System/Library/Fonts/Supplemental/Arial Bold.ttf",
+    "/Library/Fonts/Arial Bold.ttf",
+    "C:\\Windows\\Fonts\\arialbd.ttf",
+]
+FONT_CANDIDATES_REGULAR = [
+    "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+    "/System/Library/Fonts/Supplemental/Arial.ttf",
+    "/Library/Fonts/Arial.ttf",
+    "C:\\Windows\\Fonts\\arial.ttf",
+]
+
+
+def load_font(bold: bool, size: int) -> ImageFont.FreeTypeFont | ImageFont.ImageFont:
+    candidates = FONT_CANDIDATES_BOLD if bold else FONT_CANDIDATES_REGULAR
+    for path in candidates:
+        if Path(path).exists():
+            return ImageFont.truetype(path, size=size)
+    return ImageFont.load_default()
+
+
+def generate_cover(base_image: Path, version: str, build_date: dt.date, variant_label: str = "") -> bytes:
+    """Compose the official Omarchy cover art with an overlay panel
+    containing the book title, subtitle and version/date."""
+    im = Image.open(base_image).convert("RGB")
+
+    # Normalize size — 1400px wide is plenty for e-reader and PDF.
+    target_w = 1400
+    if im.width != target_w:
+        h = int(im.height * target_w / im.width)
+        im = im.resize((target_w, h), Image.LANCZOS)
+
+    overlay = Image.new("RGBA", im.size, (0, 0, 0, 0))
+    draw = ImageDraw.Draw(overlay)
+
+    # Dark translucent panel at the bottom ~28% of the image.
+    panel_h = int(im.height * 0.28)
+    panel_top = im.height - panel_h
+    draw.rectangle(
+        [(0, panel_top), (im.width, im.height)],
+        fill=(10, 10, 15, 170),
+    )
+    # Thin accent line at the top of the panel (matches Omarchy's pink)
+    draw.rectangle(
+        [(0, panel_top), (im.width, panel_top + 4)],
+        fill=(236, 64, 122, 255),
+    )
+
+    title = "The Omarchy Manual"
+    subtitle = "Offline Edition" + (f" — {variant_label}" if variant_label else "")
+    meta = f"{version}  ·  {build_date.isoformat()}"
+
+    font_title = load_font(bold=True, size=86)
+    font_sub = load_font(bold=False, size=44)
+    font_meta = load_font(bold=True, size=34)
+
+    def text_size(text: str, font) -> tuple[int, int]:
+        # Use textbbox for accurate size measurement
+        bbox = draw.textbbox((0, 0), text, font=font)
+        return bbox[2] - bbox[0], bbox[3] - bbox[1]
+
+    # Vertical layout inside the panel with padding.
+    pad_top = 40
+    gap_title = 18
+    gap_sub = 28
+
+    tw, th = text_size(title, font_title)
+    sw, sh = text_size(subtitle, font_sub)
+    mw, mh = text_size(meta, font_meta)
+
+    total = th + gap_title + sh + gap_sub + mh
+    y = panel_top + (panel_h - total) // 2
+
+    draw.text(((im.width - tw) // 2, y), title, font=font_title, fill=(255, 255, 255, 255))
+    y += th + gap_title
+    draw.text(((im.width - sw) // 2, y), subtitle, font=font_sub, fill=(245, 245, 245, 230))
+    y += sh + gap_sub
+    draw.text(((im.width - mw) // 2, y), meta, font=font_meta, fill=(236, 64, 122, 255))
+
+    composited = Image.alpha_composite(im.convert("RGBA"), overlay).convert("RGB")
+    buf = io.BytesIO()
+    composited.save(buf, format="JPEG", quality=90, optimize=True, progressive=True)
+    return buf.getvalue()
+
+
+# ---------------------------------------------------------------------------
 # Building the content
 # ---------------------------------------------------------------------------
 
@@ -331,7 +421,7 @@ EPUB_WRAPPER = """<html xmlns="http://www.w3.org/1999/xhtml">
 <head>
 <meta charset="utf-8" />
 <title>{title}</title>
-<link rel="stylesheet" type="text/css" href="../styles/epub.css" />
+<link rel="stylesheet" type="text/css" href="styles/epub.css" />
 </head>
 <body>
 {body}
@@ -381,6 +471,7 @@ def build_epub(
     build_date: dt.date,
     css_path: Path,
     out_path: Path,
+    cover_bytes: bytes | None = None,
     include_changelog: bool = True,
 ) -> None:
     suffix = "" if include_changelog else " (manual only)"
@@ -405,6 +496,25 @@ def build_epub(
     css_content = css_path.read_text(encoding="utf-8")
     css_item = epub.EpubItem(uid="style_main", file_name="styles/epub.css", media_type="text/css", content=css_content)
     book.add_item(css_item)
+
+    if cover_bytes:
+        # Emits the cover-image item (with EPUB3 properties="cover-image"),
+        # the legacy EPUB2 <meta name="cover"> pointer, and a cover.xhtml page.
+        book.set_cover("cover.jpg", cover_bytes)
+        cover_page = book.get_item_with_id("cover")
+        if cover_page is not None:
+            cover_page.content = (
+                '<html xmlns="http://www.w3.org/1999/xhtml" '
+                'xmlns:epub="http://www.idpf.org/2007/ops">'
+                '<head><title>Cover</title>'
+                '<style>body,html{margin:0;padding:0;}'
+                '.cover{display:flex;align-items:center;justify-content:center;'
+                'min-height:100vh;}'
+                '.cover img{max-width:100%;max-height:100vh;display:block;}'
+                '</style></head>'
+                '<body><div class="cover"><img src="cover.jpg" alt="Cover"/></div></body>'
+                '</html>'
+            )
 
     # Only embed images referenced by the actually-included HTML bodies.
     included_bodies: list[str] = [c.html_body for c in chapters]
@@ -438,7 +548,7 @@ def build_epub(
       </p>
     </div>
     """
-    title_chapter = epub.EpubHtml(title="Cover", file_name="title.xhtml", lang="en")
+    title_chapter = epub.EpubHtml(title="Title Page", file_name="title.xhtml", lang="en")
     title_chapter.content = wrap_epub_html("The Omarchy Manual", title_body)
     title_chapter.add_item(css_item)
     book.add_item(title_chapter)
@@ -446,7 +556,15 @@ def build_epub(
     # Build chapters: iterate TOC preserving section groupings
     chapter_by_id = {c.entry.id: c for c in chapters}
     epub_items: list[epub.EpubHtml] = [title_chapter]
-    spine: list = ["nav", title_chapter]
+
+    # Spine order: cover (if any) → nav → title → chapters → ...
+    spine: list = []
+    if cover_bytes:
+        cover_page = book.get_item_with_id("cover")
+        if cover_page is not None:
+            spine.append(cover_page)
+    spine.append("nav")
+    spine.append(title_chapter)
 
     # Group pages under their preceding section entries
     current_section: TocEntry | None = None
@@ -462,7 +580,7 @@ def build_epub(
             continue
         item = epub.EpubHtml(
             title=entry.title,
-            file_name=f"chapters/{entry.slug}.xhtml",
+            file_name=f"chapter-{entry.slug}.xhtml",
             lang="en",
         )
         item.content = wrap_epub_html(entry.title, rc.html_body)
@@ -477,7 +595,7 @@ def build_epub(
     changelog_index: epub.EpubHtml | None = None
     if include_changelog:
         changelog_index_body = "<h1>Changelog</h1><p>All Omarchy releases, newest first.</p>"
-        changelog_index = epub.EpubHtml(title="Changelog", file_name="chapters/changelog.xhtml", lang="en")
+        changelog_index = epub.EpubHtml(title="Changelog", file_name="changelog.xhtml", lang="en")
         changelog_index.content = wrap_epub_html("Changelog", changelog_index_body)
         changelog_index.add_item(css_item)
         book.add_item(changelog_index)
@@ -496,7 +614,7 @@ def build_epub(
           {rr.html_body}
         </article>
         """
-        item = epub.EpubHtml(title=title, file_name=f"changelog/{slug}.xhtml", lang="en")
+        item = epub.EpubHtml(title=title, file_name=f"release-{slug}.xhtml", lang="en")
         item.content = wrap_epub_html(title, body)
         item.add_item(css_item)
         book.add_item(item)
@@ -551,10 +669,25 @@ PDF_WRAPPER = """<!DOCTYPE html>
     @bottom-right {{ content: counter(page) " / " counter(pages); font-family: sans-serif; font-size: 9pt; color: #888; }}
   }}
   @page :first {{
+    margin: 0;
     @top-left {{ content: ""; }}
     @top-right {{ content: ""; }}
     @bottom-right {{ content: ""; }}
   }}
+  .cover-page {{
+    page: cover;
+    page-break-after: always;
+    margin: 0;
+    padding: 0;
+    text-align: center;
+  }}
+  .cover-page img {{
+    width: 21cm;
+    height: 29.7cm;
+    object-fit: cover;
+    display: block;
+  }}
+  @page cover {{ margin: 0; size: A4; }}
 {css}
 </style>
 </head>
@@ -574,6 +707,7 @@ def build_pdf(
     build_date: dt.date,
     css_path: Path,
     out_path: Path,
+    cover_path: Path | None = None,
     include_changelog: bool = True,
 ) -> None:
     # Import here so the epub path works even if weasyprint deps are missing.
@@ -584,17 +718,22 @@ def build_pdf(
     chapter_by_id = {c.entry.id: c for c in chapters}
 
     parts: list[str] = []
-    parts.append(f"""
-    <section class="title-page">
-      <h1>The Omarchy Manual</h1>
-      <p class="subtitle">Offline edition</p>
-      <p class="meta">
-        Version <strong>{escape_html(version)}</strong><br/>
-        Built {build_date.isoformat()}<br/>
-        Source: <a href="{MANUAL_ROOT}">{MANUAL_ROOT}</a>
-      </p>
-    </section>
-    """)
+    if cover_path is not None and cover_path.exists():
+        # Resolve to URL relative to base_url for WeasyPrint.
+        cover_rel = os.path.relpath(cover_path.resolve(), images.cache_dir.parent.resolve())
+        parts.append(f'<section class="cover-page"><img src="{escape_html(cover_rel)}" alt="Cover" /></section>')
+    else:
+        parts.append(f"""
+        <section class="title-page">
+          <h1>The Omarchy Manual</h1>
+          <p class="subtitle">Offline edition</p>
+          <p class="meta">
+            Version <strong>{escape_html(version)}</strong><br/>
+            Built {build_date.isoformat()}<br/>
+            Source: <a href="{MANUAL_ROOT}">{MANUAL_ROOT}</a>
+          </p>
+        </section>
+        """)
 
     current_section_title: str | None = None
     for entry in toc:
@@ -657,6 +796,8 @@ def main(argv: Iterable[str] | None = None) -> int:
     parser.add_argument("--skip-manual-only", action="store_true", help="Skip the manual-only variant (no changelog)")
     parser.add_argument("--skip-full", action="store_true", help="Skip the full variant (manual + changelog)")
     parser.add_argument("--last-release-file", type=Path, default=Path(".last_release"))
+    parser.add_argument("--cover-base", type=Path, default=Path("assets/cover.png"),
+                        help="Path to the base cover image (overlaid with title/version)")
     parser.add_argument("-v", "--verbose", action="store_true")
     args = parser.parse_args(list(argv) if argv is not None else None)
 
@@ -676,16 +817,34 @@ def main(argv: Iterable[str] | None = None) -> int:
 
     args.output_dir.mkdir(parents=True, exist_ok=True)
 
-    variants: list[tuple[str, str, bool]] = []
+    variants: list[tuple[str, str, str, bool]] = []
     if not args.skip_full:
-        variants.append(("full", f"omarchy-manual-{datestamp}", True))
+        variants.append(("full", f"omarchy-manual-{datestamp}", "", True))
     if not args.skip_manual_only:
-        variants.append(("manual_only", f"omarchy-manual-only-{datestamp}", False))
+        variants.append(("manual_only", f"omarchy-manual-only-{datestamp}", "Manual Only", False))
 
     outputs: dict[str, Path] = {}
-    for key, base, include_changelog in variants:
+    for key, base, variant_label, include_changelog in variants:
         epub_path = args.output_dir / f"{base}.epub"
         pdf_path = args.output_dir / f"{base}.pdf"
+
+        cover_bytes: bytes | None = None
+        cover_pdf_path: Path | None = None
+        if args.cover_base.exists():
+            log.info("Generating cover for variant %s", key)
+            cover_bytes = generate_cover(
+                base_image=args.cover_base,
+                version=latest_tag,
+                build_date=build_date,
+                variant_label=variant_label,
+            )
+            # Persist so WeasyPrint can load it from disk.
+            cover_pdf_path = args.cache_dir / f"cover-{key}.jpg"
+            cover_pdf_path.parent.mkdir(parents=True, exist_ok=True)
+            cover_pdf_path.write_bytes(cover_bytes)
+        else:
+            log.warning("Cover base image not found at %s — building without a cover", args.cover_base)
+
         if not args.skip_epub:
             build_epub(
                 toc=toc,
@@ -696,6 +855,7 @@ def main(argv: Iterable[str] | None = None) -> int:
                 build_date=build_date,
                 css_path=args.css,
                 out_path=epub_path,
+                cover_bytes=cover_bytes,
                 include_changelog=include_changelog,
             )
             outputs[f"{key}_epub"] = epub_path
@@ -709,6 +869,7 @@ def main(argv: Iterable[str] | None = None) -> int:
                 build_date=build_date,
                 css_path=args.css,
                 out_path=pdf_path,
+                cover_path=cover_pdf_path,
                 include_changelog=include_changelog,
             )
             outputs[f"{key}_pdf"] = pdf_path
