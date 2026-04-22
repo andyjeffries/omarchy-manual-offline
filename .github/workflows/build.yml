@@ -1,0 +1,144 @@
+name: Build offline manual
+
+on:
+  schedule:
+    # Weekly full rebuild, Mondays at 06:00 UTC
+    - cron: '0 6 * * 1'
+    # Hourly poll for new Omarchy releases
+    - cron: '17 * * * *'
+  workflow_dispatch:
+    inputs:
+      force:
+        description: 'Force rebuild even if no new release'
+        required: false
+        default: 'false'
+  repository_dispatch:
+    types: [omarchy-release]
+
+permissions:
+  contents: write
+
+concurrency:
+  group: build-manual
+  cancel-in-progress: false
+
+jobs:
+  check-release:
+    # Skip the version check on the weekly cron and on manual dispatch — those always rebuild.
+    if: github.event_name == 'schedule' && github.event.schedule == '17 * * * *'
+    runs-on: ubuntu-latest
+    outputs:
+      new_release: ${{ steps.compare.outputs.new_release }}
+      latest_tag: ${{ steps.compare.outputs.latest_tag }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Compare latest upstream release against cached tag
+        id: compare
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          latest=$(gh api repos/basecamp/omarchy/releases/latest --jq .tag_name)
+          echo "Latest upstream release: $latest"
+          cached=""
+          if [ -f .last_release ]; then
+            cached=$(tr -d '[:space:]' < .last_release)
+          fi
+          echo "Cached tag: ${cached:-<none>}"
+          echo "latest_tag=$latest" >> "$GITHUB_OUTPUT"
+          if [ "$latest" != "$cached" ]; then
+            echo "new_release=true"  >> "$GITHUB_OUTPUT"
+          else
+            echo "new_release=false" >> "$GITHUB_OUTPUT"
+          fi
+
+  build:
+    needs: [check-release]
+    # Run if: weekly cron, manual, repo dispatch, OR hourly poll found a new release.
+    if: |
+      always() &&
+      (
+        github.event_name == 'workflow_dispatch' ||
+        github.event_name == 'repository_dispatch' ||
+        (github.event_name == 'schedule' && github.event.schedule == '0 6 * * 1') ||
+        (github.event_name == 'schedule' && github.event.schedule == '17 * * * *' && needs.check-release.outputs.new_release == 'true')
+      )
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+
+      - name: Install system deps for WeasyPrint
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            libpango-1.0-0 libpangoft2-1.0-0 libcairo2 \
+            libgdk-pixbuf-2.0-0 libffi-dev fonts-dejavu
+
+      - name: Install Python deps
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Build epub + PDF (both full and manual-only)
+        id: build
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          python build.py -v | tee build.out
+          grep -E '^(version|date|full_epub|full_pdf|manual_only_epub|manual_only_pdf)=' build.out >> "$GITHUB_OUTPUT"
+
+      - name: Commit .last_release if changed
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add .last_release
+          if git diff --cached --quiet; then
+            echo "No change to .last_release"
+          else
+            git commit -m "Bump .last_release to ${{ steps.build.outputs.version }}"
+            git push
+          fi
+
+      - name: Publish epub + PDF as rolling "latest" release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VERSION: ${{ steps.build.outputs.version }}
+          DATE: ${{ steps.build.outputs.date }}
+          FULL_EPUB: ${{ steps.build.outputs.full_epub }}
+          FULL_PDF: ${{ steps.build.outputs.full_pdf }}
+          MANUAL_ONLY_EPUB: ${{ steps.build.outputs.manual_only_epub }}
+          MANUAL_ONLY_PDF: ${{ steps.build.outputs.manual_only_pdf }}
+        run: |
+          notes=$(printf 'Auto-built from upstream Omarchy **%s** on %s.\n\nTwo variants per format:\n- `omarchy-manual-*` — manual + full changelog (every release since v1)\n- `omarchy-manual-only-*` — manual only (no changelog)\n\nStable URLs:\n- `omarchy-manual-latest.epub` / `.pdf`\n- `omarchy-manual-only-latest.epub` / `.pdf`\n\nSource: https://learn.omacom.io/2/the-omarchy-manual\nUpstream: https://github.com/basecamp/omarchy/releases/tag/%s\n' "$VERSION" "$DATE" "$VERSION")
+
+          # Per-build dated copies
+          cp "$FULL_EPUB"        "omarchy-manual-${VERSION}-${DATE}.epub"
+          cp "$FULL_PDF"         "omarchy-manual-${VERSION}-${DATE}.pdf"
+          cp "$MANUAL_ONLY_EPUB" "omarchy-manual-only-${VERSION}-${DATE}.epub"
+          cp "$MANUAL_ONLY_PDF"  "omarchy-manual-only-${VERSION}-${DATE}.pdf"
+          # Stable "-latest" names
+          cp "$FULL_EPUB"        "omarchy-manual-latest.epub"
+          cp "$FULL_PDF"         "omarchy-manual-latest.pdf"
+          cp "$MANUAL_ONLY_EPUB" "omarchy-manual-only-latest.epub"
+          cp "$MANUAL_ONLY_PDF"  "omarchy-manual-only-latest.pdf"
+
+          # Rolling "latest" release — recreate so stale assets don't linger.
+          gh release delete latest --yes --cleanup-tag || true
+          gh release create latest \
+            --title  "Latest build (${VERSION}, ${DATE})" \
+            --notes  "$notes" \
+            --latest \
+            "omarchy-manual-${VERSION}-${DATE}.epub" \
+            "omarchy-manual-${VERSION}-${DATE}.pdf" \
+            "omarchy-manual-only-${VERSION}-${DATE}.epub" \
+            "omarchy-manual-only-${VERSION}-${DATE}.pdf" \
+            "omarchy-manual-latest.epub" \
+            "omarchy-manual-latest.pdf" \
+            "omarchy-manual-only-latest.epub" \
+            "omarchy-manual-only-latest.pdf"

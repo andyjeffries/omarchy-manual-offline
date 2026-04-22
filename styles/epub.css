@@ -1,0 +1,185 @@
+/* Base typography */
+body {
+  font-family: Georgia, "Times New Roman", serif;
+  line-height: 1.55;
+  color: #1a1a1a;
+  margin: 0;
+}
+
+h1, h2, h3, h4, h5, h6 {
+  font-family: -apple-system, "Helvetica Neue", Arial, sans-serif;
+  color: #111;
+  line-height: 1.2;
+  margin-top: 1.6em;
+  margin-bottom: 0.5em;
+}
+
+h1 { font-size: 1.9em; border-bottom: 2px solid #ddd; padding-bottom: 0.2em; }
+h2 { font-size: 1.5em; }
+h3 { font-size: 1.25em; }
+h4 { font-size: 1.1em; }
+
+p { margin: 0.8em 0; }
+
+a { color: #b45309; text-decoration: none; }
+a:hover { text-decoration: underline; }
+
+ul, ol { padding-left: 1.6em; }
+li { margin: 0.2em 0; }
+
+blockquote {
+  border-left: 4px solid #ccc;
+  padding: 0.1em 1em;
+  color: #555;
+  margin: 1em 0;
+  background: #fafafa;
+}
+
+img {
+  max-width: 100%;
+  height: auto;
+  display: block;
+  margin: 1em auto;
+  border-radius: 4px;
+}
+
+hr { border: none; border-top: 1px solid #ddd; margin: 2em 0; }
+
+table {
+  border-collapse: collapse;
+  margin: 1em 0;
+  width: 100%;
+}
+
+th, td {
+  border: 1px solid #ccc;
+  padding: 0.4em 0.6em;
+  text-align: left;
+}
+
+th { background: #f4f4f4; }
+
+/* Inline code */
+code {
+  font-family: "SF Mono", Menlo, Consolas, "Courier New", monospace;
+  font-size: 0.92em;
+  background: #f4f4f4;
+  padding: 0.1em 0.35em;
+  border-radius: 3px;
+  color: #c7254e;
+}
+
+/* Code blocks */
+pre {
+  background: #f8f8f8;
+  border: 1px solid #e5e5e5;
+  border-radius: 6px;
+  padding: 0.9em 1em;
+  overflow-x: auto;
+  line-height: 1.45;
+  font-size: 0.88em;
+  margin: 1em 0;
+}
+
+pre code {
+  background: transparent;
+  padding: 0;
+  color: inherit;
+  border-radius: 0;
+  font-size: 1em;
+}
+
+/* Pygments syntax highlighting (friendly style) */
+.codehilite .hll { background-color: #ffffcc }
+.codehilite .c  { color: #60a0b0; font-style: italic }
+.codehilite .err { border: 1px solid #FF0000 }
+.codehilite .k  { color: #007020; font-weight: bold }
+.codehilite .o  { color: #666666 }
+.codehilite .cm { color: #60a0b0; font-style: italic }
+.codehilite .cp { color: #007020 }
+.codehilite .c1 { color: #60a0b0; font-style: italic }
+.codehilite .cs { color: #60a0b0; background-color: #fff0f0 }
+.codehilite .gd { color: #A00000 }
+.codehilite .ge { font-style: italic }
+.codehilite .gr { color: #FF0000 }
+.codehilite .gh { color: #000080; font-weight: bold }
+.codehilite .gi { color: #00A000 }
+.codehilite .go { color: #888888 }
+.codehilite .gp { color: #c65d09; font-weight: bold }
+.codehilite .gs { font-weight: bold }
+.codehilite .gu { color: #800080; font-weight: bold }
+.codehilite .gt { color: #0044DD }
+.codehilite .kc { color: #007020; font-weight: bold }
+.codehilite .kd { color: #007020; font-weight: bold }
+.codehilite .kn { color: #007020; font-weight: bold }
+.codehilite .kp { color: #007020 }
+.codehilite .kr { color: #007020; font-weight: bold }
+.codehilite .kt { color: #902000 }
+.codehilite .m  { color: #40a070 }
+.codehilite .s  { color: #4070a0 }
+.codehilite .na { color: #4070a0 }
+.codehilite .nb { color: #007020 }
+.codehilite .nc { color: #0e84b5; font-weight: bold }
+.codehilite .no { color: #60add5 }
+.codehilite .nd { color: #555555; font-weight: bold }
+.codehilite .ni { color: #d55537; font-weight: bold }
+.codehilite .ne { color: #007020 }
+.codehilite .nf { color: #06287e }
+.codehilite .nl { color: #002070; font-weight: bold }
+.codehilite .nn { color: #0e84b5; font-weight: bold }
+.codehilite .nt { color: #062873; font-weight: bold }
+.codehilite .nv { color: #bb60d5 }
+.codehilite .ow { color: #007020; font-weight: bold }
+.codehilite .w  { color: #bbbbbb }
+.codehilite .mf { color: #40a070 }
+.codehilite .mh { color: #40a070 }
+.codehilite .mi { color: #40a070 }
+.codehilite .mo { color: #40a070 }
+.codehilite .sb { color: #4070a0 }
+.codehilite .sc { color: #4070a0 }
+.codehilite .sd { color: #4070a0; font-style: italic }
+.codehilite .s2 { color: #4070a0 }
+.codehilite .se { color: #4070a0; font-weight: bold }
+.codehilite .sh { color: #4070a0 }
+.codehilite .si { color: #70a0d0; font-style: italic }
+.codehilite .sx { color: #c65d09 }
+.codehilite .sr { color: #235388 }
+.codehilite .s1 { color: #4070a0 }
+.codehilite .ss { color: #517918 }
+.codehilite .bp { color: #007020 }
+.codehilite .vc { color: #bb60d5 }
+.codehilite .vg { color: #bb60d5 }
+.codehilite .vi { color: #bb60d5 }
+.codehilite .il { color: #40a070 }
+
+/* Title page */
+.title-page {
+  text-align: center;
+  padding: 4em 1em;
+}
+.title-page h1 {
+  font-size: 2.6em;
+  border: none;
+  margin-bottom: 0.2em;
+}
+.title-page .subtitle { color: #555; font-size: 1.2em; font-style: italic; }
+.title-page .meta { color: #888; margin-top: 2em; font-size: 0.95em; }
+
+/* Part/section dividers */
+.part-page {
+  page-break-before: always;
+  text-align: center;
+  padding: 6em 1em;
+}
+.part-page h1 {
+  font-size: 2em;
+  border: none;
+  color: #b45309;
+}
+
+/* Chapter starts on new page in PDF */
+.chapter { page-break-before: always; }
+
+/* Release entries */
+.release + .release { margin-top: 2em; border-top: 1px dashed #ddd; padding-top: 1em; }
+.release .release-meta { color: #888; font-size: 0.9em; }
