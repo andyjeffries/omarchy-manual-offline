@@ -319,12 +319,16 @@ def generate_cover(base_image: Path, version: str, build_date: dt.date, variant_
     overlay = Image.new("RGBA", im.size, (0, 0, 0, 0))
     draw = ImageDraw.Draw(overlay)
 
-    # Dark translucent panel at the bottom ~28% of the image.
-    panel_h = int(im.height * 0.28)
+    # Dark translucent panel taking the bottom ~34% of the image.
+    # Panel extends to the image edge (so any reader that letterboxes/clips
+    # still shows a clean coloured band) but all text sits in the top half
+    # of the panel, leaving ~15–18% of image height as a safe "bleed zone"
+    # below the last text line.
+    panel_h = int(im.height * 0.34)
     panel_top = im.height - panel_h
     draw.rectangle(
         [(0, panel_top), (im.width, im.height)],
-        fill=(10, 10, 15, 170),
+        fill=(10, 10, 15, 180),
     )
     # Thin accent line at the top of the panel (matches Omarchy's pink)
     draw.rectangle(
@@ -341,21 +345,21 @@ def generate_cover(base_image: Path, version: str, build_date: dt.date, variant_
     font_meta = load_font(bold=True, size=34)
 
     def text_size(text: str, font) -> tuple[int, int]:
-        # Use textbbox for accurate size measurement
         bbox = draw.textbbox((0, 0), text, font=font)
         return bbox[2] - bbox[0], bbox[3] - bbox[1]
-
-    # Vertical layout inside the panel with padding.
-    pad_top = 40
-    gap_title = 18
-    gap_sub = 28
 
     tw, th = text_size(title, font_title)
     sw, sh = text_size(subtitle, font_sub)
     mw, mh = text_size(meta, font_meta)
 
-    total = th + gap_title + sh + gap_sub + mh
-    y = panel_top + (panel_h - total) // 2
+    gap_title = 18
+    gap_sub = 28
+
+    # Anchor the text block near the TOP of the panel with a fixed padding,
+    # so text remains well inside the image even if the reader clips the
+    # bottom 10–15%. Roughly half the panel is empty safe-zone below the text.
+    pad_top = int(im.height * 0.025)  # ~50px at 2000px tall
+    y = panel_top + pad_top
 
     draw.text(((im.width - tw) // 2, y), title, font=font_title, fill=(255, 255, 255, 255))
     y += th + gap_title
